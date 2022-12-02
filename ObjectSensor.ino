@@ -1,25 +1,31 @@
+#include <LiquidCrystal.h>
 
-#define LED 3               // define LED pin to 3.
-#define TRIG 9              // define trigger pin of sensor module to 6.
-#define ECHO 8              // define echo pin of sensor module to 7.
+#define NOTE_C4 262         // frequency to emit from piezo.
+#define TRIG 8              // define trigger pin of sensor module to 6.
+#define ECHO 9              // define echo pin of sensor module to 7.
+#define TMP A0              // define temperature pin to A0.
+#define PIEZO 10            // define speaker pin of sensor module to 12.
 #define SPEED_OF_SOUND 343  //The climate of the enviroment is assumed to be dry air @ 20°C, \
                             //resulting in the speed of sound = 343 m/s.
 
-// const int rs = 11, en = 12, d4 = 4, d5 = 5, d6 = 6, d7 = 7;  // Setting up LCD pins.
-// LiquidCrystal lcd(rs, en, d4, d5, d6, d7);                   // Pass LCD pins into LiquidCrystal constructor.
-int limit = 50;  // The maximum distance for an object in the US sensors vicinity.
+
+int limit = 30;  // The maximum distance for an object in the US sensors vicinity.
+
+unsigned long prevTime;
+const int duration = 500;      // duration to emit sound from piezo.
+const int timeToDelay = 1000;  // time to delay the sound emitting.
+bool stopFlag = false;
+
+LiquidCrystal lcd(11, 12, 4, 5, 6, 7);
+
 
 void setup() {
-  /*
-    // *Set up method.
-    Set trigger pin to OUTPUT.
-    Set echo pin to INPUT.
-    Establish connection with Serial.Monitor at 9,600 bits / s
-  */
+  lcd.begin(16, 2);
   pinMode(TRIG, OUTPUT);  // Set trigger pin to OUTPUT.
   pinMode(ECHO, INPUT);   // Set echo pin to INPUT.
-  Serial.begin(9600);     // Set data rate to Serial.Monitor @ 9,600 bits / s.
+  Serial.begin(9600);
 }
+
 
 float calculateDistanceFoot(double timeElapsed) {
   /*
@@ -77,31 +83,59 @@ double getDistance() {
   return calculateDistanceCM(echoTime);  // return the distance in centimeters.
 }
 
-void blinkLED(double distance) {
+int calculateRoomTemp() {
+  /* Start of temp value loop - using analog to digital converter (ADC) in 5v pin */
+  int vIn = analogRead(TMP);  // Reading voltage input (vIn) from TMP sensor
+  // Convert input to voltage output (vOut): reading * 5000mv / 1024 (input from A0 pin)
+  float vOut = vIn * (5000 / 1024.0);
+  int tempC = (vOut - 500) / 10;  // Convert to celcius using voltage - 500mv offset / 10
+  return tempC;
+}
+
+void stopAlarm() {
   /*
-  * Method to flash an LED with a delay in change of state, 
-  * the delay is determined by the arguement given.
+    Method to stop emitting alarm noise and exits the program.
   */
-  digitalWrite(LED, LOW);   // Turn LED off.
-  digitalWrite(LED, HIGH);  // Turn LED on.
-  delay(distance);          // delay for {distance} µs
-  digitalWrite(LED, LOW);   // Turn LED off.
-  delay(distance);          // delay for {distance} µs
+  stopFlag = true;  // object detected
+  noTone(PIEZO);    // stop playing sound on speaker
+}
+
+void displayToLCD(double distance, int tempC) {
+  /*
+  Method to print the time and temperature to the LCD.
+  */
+  lcd.clear();           // Clear screen to reset value
+  lcd.print(distance);   // print the distance
+  lcd.setCursor(11, 0);  // LCD alignment value
+  lcd.print(tempC);      // Print temp value to LCD
+  lcd.print((char)434);  // Enter char value (degree symbol)
+  lcd.print("C");        // Print C char to LCD
+  lcd.setCursor(16, 0);  // LCD alignment value
 }
 
 void loop() {
-  /*
-    Continuous code execution method.
-    This method sends output pulses from the ultrasonic sensor and calculates
-    the distance of an object based on the time a return pulse is recieved.
-    The distance is then displayed to the Serial Monitor and compared against a 
-    pre-defined limit. If the limit is surpassed, an LED flashes, otherwise the LED is off.
-  */
-  double distance = getDistance();  // Initiate distance retrieval.
-  Serial.println(distance);
-  if (distance < limit) {
-    // If the object is within the limit e.g. 30cm
-    blinkLED(distance);  // Flash LED.
+  double distance = getDistance();  // calculate distance.
+
+  while (!stopFlag) {          // <-- this is needed
+    distance = getDistance();  // update the distance once note has played.
+    int tempC = calculateRoomTemp();
+    displayToLCD(distance, tempC);
+    // while object not been detected.
+    if (distance < limit) {
+      // If the object is within the limit e.g. 30cm, stop alarm.
+      stopAlarm();  // Stop the alarm.
+    } else {
+      // else an object has not been detected.
+      long currentTime = millis();          // current execution time of program.
+      long delta = currentTime - prevTime;  // difference between current time and previous recorded time.
+      if (currentTime - prevTime >= timeToDelay) {
+        // if the current time - previous time is greater than
+        prevTime += timeToDelay;         // add delay time to previous time.
+        tone(PIEZO, NOTE_C4, duration);  // emit sound.
+      }
+    }
   }
-  delay(200);  // Delay for 1/5 second.
+
+  int tempC = calculateRoomTemp(); //calculate temperature.
+  displayToLCD(distance, tempC); // display time and temperature to LCD.
 }
