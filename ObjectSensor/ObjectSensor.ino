@@ -14,13 +14,19 @@
 #define ECHO 12             // define echo pin of sensor module to 12.
 #define TMP A0              // define temperature pin to A0.
 #define PIEZO 8             // define speaker pin of sensor module to 8.
+#define TIMEBUTTON 10       // define time button pin to 10
+#define ALARMBUTTON 13      // define alarm button pin to 13
+#define TIMESETDIAL A2      // define time set potentiometer
 
 // further definitions needed
 #define NOTE_C4 262         // frequency to emit from piezo.
 #define SPEED_OF_SOUND 343 
+#define ALARM 9476
+#define TIME 9478
+
 /*
-  The climate of the enviroment is assumed to be dry air @ 20°C,
-  resulting in the speed of sound = 343 m/s.
+The climate of the enviroment is assumed to be dry air @ 20°C,
+resulting in the speed of sound = 343 m/s.
 */
 
 // variables for timekeeping
@@ -35,12 +41,25 @@ int tempC;
 bool alarmSet = false; // true when alarm is set
 int alarmHour = 0, alarmMinute = 0; // time of current alarm
 const int alarmStopDistance = 30;  // The maximum distance in cm to stop the alarm
+int timePresses = 0;
+int alarmPresses = 0;
+unsigned long blinkTime = 500;
+int previousDisplayTime = 0;
+unsigned long blinkTimer = 0;
+bool fullDisplay = false;
 
 // variables for pulsing the alarm
 unsigned long prevTime;
 const int duration = 500;      // duration to emit sound from piezo.
 const int timeToDelay = 1000;  // time to delay the sound emitting.
 bool stopFlag = true;
+
+// variables to debounce time setting buttons
+int timeButtonState = LOW;
+int alarmButtonState = LOW;
+unsigned long timeDebounce = 0;
+unsigned long alarmDebounce = 0;
+unsigned long debounceDelay = 50;
 
 LiquidCrystal lcd(2, 3, 4, 5, 6, 7); // initialise the lcd screen
 
@@ -91,17 +110,45 @@ byte moonR[8] = {
 
 void setup() {
   lcd.begin(16, 2);
-  pinMode(TRIG, OUTPUT);  // Set trigger pin to OUTPUT.
-  pinMode(ECHO, INPUT);   // Set echo pin to INPUT.
+  pinMode(TRIG, OUTPUT);        // Set trigger pin to OUTPUT.
+  pinMode(ECHO, INPUT);         // Set echo pin to INPUT.
+  pinMode(TIMEBUTTON, INPUT);   // Set time pin button to INPUT
+  pinMode(ALARMBUTTON, INPUT);  // Set alarm pin buttom to INPUT
+  pinMode(TIMESETDIAL, INPUT);
 
   // create custom chars
   lcd.createChar(0, sunL);
   lcd.createChar(1, sunR);
   lcd.createChar(2, moonL);
   lcd.createChar(3, moonR);
+
+  Serial.begin(9600);
 }
 
 void loop() {
+  /*--------------------
+    Check button presses
+  ----------------------*/
+  /*
+  The code below to debounce the button presses was
+  researched at the following resource:
+
+  https://www.programmingelectronics.com/debouncing-a-button-with-arduino/
+
+  //TODO
+
+  The code was not copied verbatim and has been adapted
+  to the specific purpose in this program.
+  */
+  if(buttonPressed(TIME, TIMEBUTTON, timeDebounce, timeButtonState)) {
+    timePresses++;
+    timeButtonPress();
+  }
+
+  if(buttonPressed(ALARM, ALARMBUTTON, alarmDebounce, alarmButtonState)) {
+    alarmButtonPress();
+  }
+
   /*--------------------
     Update sensor inputs
   ----------------------*/
@@ -142,7 +189,6 @@ void loop() {
   --------------------*/
 
   updateDisplay();
-  delay(1000);
 }
 
 /*-----------------------------------
@@ -336,9 +382,9 @@ int calculateRoomTemp() {
   return tempC;
 }
 
-/*------------------------------------
-  Functions for time and alarm setting 
---------------------------------------*/
+/*-----------------------------
+  Functions for sounding alarm 
+------------------------------*/
 
 /**
   Determines if the alarm should sound or not
@@ -381,4 +427,82 @@ void soundAlarm() {
 void stopAlarm() {
   noTone(PIEZO);    // stop playing sound on speaker
   stopFlag = true;  // object detected
+}
+
+/*-------------------------------------
+  Functions for time and alarm setting
+--------------------------------------*/
+
+void timeButtonPress() {
+  while(timePresses == 1) {
+    if(buttonPressed(TIME, TIMEBUTTON, timeDebounce, timeButtonState)) {
+      timePresses++;
+    }
+    hour = analogRead(TIMESETDIAL) * 23 / 1023;
+    if((millis() - blinkTimer >= 500)) {
+      lcd.clear();
+      blinkTimer = millis();
+      if(previousDisplayTime != hour || !fullDisplay) {
+        updateTimeDisplay();
+        fullDisplay = true;
+        previousDisplayTime = hour;
+      } else {
+        lcd.setCursor(2, 0);
+        lcd.print(":"); 
+        if(minute < 10) {
+          lcd.print(0);
+        }
+        lcd.print(minute);
+        fullDisplay = false;  
+      }
+    }
+  }
+  while(timePresses == 2) {
+    if(buttonPressed(TIME, TIMEBUTTON, timeDebounce, timeButtonState)) {
+      timePresses++;
+    }
+    minute = long(analogRead(TIMESETDIAL)) * 59 / 1023;
+    if((millis() - blinkTimer >= 500)) {
+      lcd.clear();
+      blinkTimer = millis();
+      if(previousDisplayTime != minute || !fullDisplay) {
+        updateTimeDisplay();
+        fullDisplay = true;
+        previousDisplayTime = minute;
+      } else {
+        if(hour < 10) {
+          lcd.print(0);
+        }
+        lcd.print(hour);
+        lcd.print(":"); 
+        fullDisplay = false;  
+      }
+    }
+  }
+  timePresses = 0;
+}
+
+void alarmButtonPress() {
+
+}
+
+bool buttonPressed(int timeOrAlarm, int buttonPin, int debounceTimer, int buttonState) {
+  bool pressed = false;
+  int reading = digitalRead(buttonPin);
+  if((millis() - debounceTimer) > debounceDelay) {
+    if(reading != buttonState) {
+      buttonState = reading;
+      if(buttonState == HIGH) {
+        pressed = true;
+      }
+      if(timeOrAlarm == TIME) {
+        timeButtonState = reading;
+        timeDebounce = millis();
+      } else if(timeOrAlarm == ALARM) {
+        alarmButtonState = reading;
+        alarmDebounce = millis();
+      }
+    }
+  }
+  return pressed;
 }
