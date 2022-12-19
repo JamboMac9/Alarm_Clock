@@ -146,6 +146,7 @@ void loop() {
   }
 
   if(buttonPressed(ALARM, ALARMBUTTON, alarmDebounce, alarmButtonState)) {
+    alarmPresses++;
     alarmButtonPress();
   }
 
@@ -483,7 +484,81 @@ void timeButtonPress() {
 }
 
 void alarmButtonPress() {
-
+  while(alarmPresses == 1) {
+    if(buttonPressed(ALARM, ALARMBUTTON, alarmDebounce, alarmButtonState)) {
+      alarmPresses++;
+    }
+    alarmHour = analogRead(TIMESETDIAL) * 23 / 1023;
+    if((millis() - blinkTimer >= 500)) {
+      lcd.clear();
+      blinkTimer = millis();
+      if(previousDisplayTime != alarmHour || !fullDisplay) {
+        lcd.setCursor(0, 1);
+        lcd.print("Alarm - ");
+        if(alarmHour < 10) {
+          lcd.print(0);
+        }
+        lcd.print(alarmHour);
+        lcd.print(":");
+        if(alarmMinute < 10) {
+          lcd.print(0);
+        }
+        lcd.print(alarmMinute);
+        fullDisplay = true;
+        previousDisplayTime = alarmHour;
+      } else {
+        lcd.setCursor(0, 1);
+        lcd.print("Alarm -   :"); 
+        if(alarmMinute < 10) {
+          lcd.print(0);
+        }
+        lcd.print(alarmMinute);
+        fullDisplay = false;  
+      }
+    }
+  }
+  while(alarmPresses == 2) {
+    if(buttonPressed(ALARM, ALARMBUTTON, alarmDebounce, alarmButtonState)) {
+      alarmPresses++;
+    }
+    alarmMinute = long(analogRead(TIMESETDIAL)) * 59 / 1023;
+    if((millis() - blinkTimer >= 500)) {
+      lcd.clear();
+      blinkTimer = millis();
+      if(previousDisplayTime != alarmMinute || !fullDisplay) {
+        lcd.setCursor(0, 1);
+        lcd.print("Alarm - ");
+        if(alarmHour < 10) {
+          lcd.print(0);
+        }
+        lcd.print(alarmHour);
+        lcd.print(":");
+        if(alarmMinute < 10) {
+          lcd.print(0);
+        }
+        lcd.print(alarmMinute);
+        fullDisplay = true;
+        previousDisplayTime = alarmMinute;
+      } else {
+        lcd.clear();
+        lcd.setCursor(0, 1);
+        lcd.print("Alarm - "); 
+        if(alarmHour < 10) {
+          lcd.print(0);
+        }
+        lcd.print(alarmHour);
+        lcd.print(":");
+        fullDisplay = false;  
+      }
+    }
+  }
+  if(alarmPresses == 3) {
+    alarmSet = true;
+  }
+  else {
+    alarmSet = false;
+    alarmPresses = 0;
+  }
 }
 
 bool buttonPressed(int timeOrAlarm, int buttonPin, int debounceTimer, int buttonState) {
